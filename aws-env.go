@@ -1,71 +1,33 @@
 package main
 
 import (
+	"flag"
 	"fmt"
-	"log"
-	"os"
-	"path"
-	"strconv"
-	"strings"
-
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/ec2metadata"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ssm"
+	"log"
+	"os"
+	"strings"
 )
 
 func main() {
 	if os.Getenv("AWS_ENV_PATH") == "" {
 		log.Println("aws-env running locally, without AWS_ENV_PATH")
-	} else {
-		// recursivePtr := flag.Bool("recursive", false, "recursively process parameters on path")
-		// flag.Parse()
-
-		sess := CreateSession()
-		client := CreateClient(sess)
-		recursive := false
-		if os.Getenv("AWS_ENV_RECURSIVE") != "" {
-			r, err := strconv.ParseBool(os.Getenv("AWS_ENV_RECURSIVE"))
-			if err != nil {
-				panic(err.Error() + "\nSee: https://golang.org/pkg/strconv/#ParseBool")
-			}
-			recursive = r
-		}
-		ExportVariables(client, os.Getenv("AWS_ENV_PATH"), recursive, "")
+		return
 	}
-	// fmt.Println("os.Args = ")
-	// for index, element := range os.Args {
-	// 	fmt.Println(index, "=>", element)
-	// }
-	// if len(os.Args) >= 2 {
-	// 	binary, lookErr := exec.LookPath(os.Args[1])
-	// 	if lookErr != nil {
-	// 		panic(lookErr)
-	// 	}
-	//
-	// 	env := os.Environ()
-	// 	args := os.Args[1:]
-	// 	execErr := syscall.Exec(binary, args, env)
-	// 	if execErr != nil {
-	// 		panic(execErr)
-	// 	}
-	// }
 
+	recursivePtr := flag.Bool("recursive", false, "recursively process parameters on path")
+	flag.Parse()
+
+	sess := CreateSession()
+	client := CreateClient(sess)
+
+	ExportVariables(client, os.Getenv("AWS_ENV_PATH"), *recursivePtr, "")
 }
 
 func CreateSession() *session.Session {
-	sess := session.Must(session.NewSession())
-	if len(aws.StringValue(sess.Config.Region)) == 0 {
-		meta := ec2metadata.New(sess)
-		identity, err := meta.GetInstanceIdentityDocument()
-		if err != nil {
-			return session.Must(nil, err)
-		}
-		return session.Must(session.NewSession(&aws.Config{
-			Region: aws.String(identity.Region),
-		}))
-	}
-	return sess
+	return session.Must(session.NewSession())
 }
 
 func CreateClient(sess *session.Session) *ssm.SSM {
@@ -91,7 +53,6 @@ func ExportVariables(client *ssm.SSM, path string, recursive bool, nextToken str
 
 	for _, element := range output.Parameters {
 		PrintExportParameter(path, element)
-		SetExportParameter(element)
 	}
 
 	if output.NextToken != nil {
@@ -108,12 +69,4 @@ func PrintExportParameter(path string, parameter *ssm.Parameter) {
 	value = strings.Replace(value, "'", "\\'", -1)
 
 	fmt.Printf("export %s=%s\n", env, value)
-}
-
-func SetExportParameter(parameter *ssm.Parameter) {
-	name := *parameter.Name
-	value := *parameter.Value
-
-	_, envName := path.Split(name)
-	os.Setenv(envName, value)
 }
